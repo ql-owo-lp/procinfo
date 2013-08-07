@@ -1,0 +1,35 @@
+{  "Android-x86 Gingerbread", /* entry name */
+   0xC17CDFE0, /* task struct root */
+   3236, /* size of task_struct */
+   440, /* offset of task_struct list */
+   520, /* offset of pid */
+   524, /* offset of tgid */
+   556, /* offset of group_leader */
+   612, /* offset of thread_group */
+   532, /* offset of real_parent */
+   468, /* offset of mm */
+   4, /* offset of stack */
+   732, /* offset of real_cred */
+   736, /* offset of cred */
+   4, /* offset of uid cred */
+   8, /* offset of gid cred */
+   20, /* offset of euid cred */
+   24, /* offset of egid cred */
+   40, /* offset of pgd in mm */
+   156, /* offset of arg_start in mm */
+   144, /* offset of start_brk in mm */
+   148, /* offset of brk in mm */
+   152, /* offset of start_stack in mm */
+   744, /* offset of comm */
+   16, /* size of comm */
+   4, /* offset of vm_start in vma */
+   8, /* offset of vm_end in vma */
+   12, /* offset of vm_next in vma */
+   76, /* offset of vm_file in vma */
+   24, /* offset of vm_flags in vma */
+   12, /* offset of dentry in file */
+   20, /* offset of d_name in dentry */
+   36, /* offset of d_iname in dentry */
+   16, /* offset of d_parent in dentry */
+   0, /* offset of task in thread_info */
+},
