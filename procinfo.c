@@ -13,6 +13,7 @@
 #include <linux/mm.h>
 #include <linux/fs.h>
 #include <linux/dcache.h>
+#include <linux/rbtree.h>
 
 #define INVALID_OFFSET 0xFFFFFFFF
 
@@ -503,11 +504,30 @@ gva_t findThreadGroupFromTaskStruct(gva_t ts, ProcInfo* pPI) {
 	return (0);
 }
 
+/*
+ * The key to find the proper uid / gid is about to figure out wether
+ * the system is compiled with CONFIG_DEBUG_CREDENTIALS or not.  And the way
+ * to check this is about check if there is a put_addr pointer
+ */
 gva_t findGUIDFromCred(gva_t cred, ProcInfo* pPI) {
+	uint32_t offset = 0;
+	uint32_t* _put_addr = NULL;
+	if ((pPI == NULL) || !isKernelAddress(cred)) {
+		return (0);
+	}
+	// now test the put_addr
+	_put_addr = (uint32_t*) (cred + 8);
+	if (isKernelAddress(*_put_addr))
+		offset = 12;
+	pPI->cred_uid = 4 + offset;
+	pPI->cred_gid = 8 + offset;
+	pPI->cred_euid = 20 + offset;
+	pPI->cred_egid = 24 + offset;
 	return (0);
 }
 
-/* in 2.6.31, the vma_struct starts with a vm_mm, then followed by
+/* 
+ * in 2.6.31, the vma_struct starts with a vm_mm, then followed by
  * two unsigned long fields: vm_start and vm_end, then a pointer: vm_next
  * However, in 3.8+, the vma_struct starts with vm_start and vm_end,
  * then two pointers: vm_next and vm_previous
@@ -516,21 +536,25 @@ gva_t findGUIDFromCred(gva_t cred, ProcInfo* pPI) {
 
 gva_t findVMInfoFromVMA(gva_t vma, gva_t mm, ProcInfo* pPI) {
 	uint32_t offset = 0;
-	uint32_t* tmp_mm = NULL;
+	uint32_t* _mm = NULL;
 	if ((pPI == NULL) || !isKernelAddress(vma) || !isKernelAddress(mm)) {
 		return (0);
 	}
 	// check whether the first field is vm_mm
-	tmp_mm = (uint32_t*) vma;	// get the mm pointer
+	_mm = (uint32_t*) vma;	// get the mm pointer
 	// check if the value equals to mm
-	if ((*tmp_mm) == mm) {
-		offset = 4;	// we get a vm_mm here
-		printk(KERN_INFO "mm found!\n");
+	if ((*_mm) == mm) {
+		offset = 4;		// we get a vm_mm here
+		pPI->vma_vm_flags = 12 + sizeof(pgprot_t) + 4 + offset;	// vm_prev + vm_page_prot, for linux kernel 2.6		
+	}
+	else {
+		// do a double check, by checking 
+		printk(KERN_INFO "vm_mm double check passed!\n");
+		//pPI->vma_vm_flags = sizeof(rb_node) + 8 + 4 + sizeof(pgprot_t) + 4;	// vm_rb + rb_subtree_gap + *vm_mm + vm_page_prot
 	}
 	pPI->vma_vm_start = offset;
 	pPI->vma_vm_end = 4 + offset;
 	pPI->vma_vm_next = 8 + offset;
-	//pPI->vma_vm_flags = 24 + offset;	// why not +16?
 	return (0);
 }
 
@@ -635,6 +659,9 @@ int try_vmi(void) {
 
 	findRealParentGroupLeaderFromTaskStruct(taskstruct, &pi);
 	printk(KERN_INFO "real_parent = %d, group_leader = %d\n", pi.ts_real_parent, pi.ts_group_leader);
+	
+	// test
+	printk(KERN_INFO "unsigned = %d\n", sizeof(unsigned long));
 
 	gl = GET_FIELD(taskstruct, pi.ts_group_leader);
 	ret = findCommFromTaskStruct(gl, &pi);
@@ -648,13 +675,16 @@ int try_vmi(void) {
 	}
 
 	if (ret)
-		printk(KERN_INFO "Comm offset is = %d, %s \n", pi.ts_comm, (char*)(taskstruct + pi.ts_comm));
+		printk(KERN_INFO "Comm offset is = %d, %s\n", pi.ts_comm, (char*)(taskstruct + pi.ts_comm));
 
 	findCredFromTaskStruct(taskstruct, &pi);
-	printk(KERN_INFO "real_cred = %d, cred = %d \n", pi.ts_real_cred, pi.ts_cred);
+	printk(KERN_INFO "real_cred = %d, cred = %d\n", pi.ts_real_cred, pi.ts_cred);
 
+	findGUIDFromCred(taskstruct + pi.ts_real_cred, &pi);
+	printk(KERN_INFO "cred_uid = %d, cred_gid = %d, cred_euid = %d, cred_egid = %d\n", pi.cred_uid, pi.cred_gid, pi.cred_euid, pi.cred_egid);
+	
 	findPIDFromTaskStruct(taskstruct, &pi);
-	printk(KERN_INFO "pid = %d, tgid = %d \n", pi.ts_pid, pi.ts_tgid);
+	printk(KERN_INFO "pid = %d, tgid = %d\n", pi.ts_pid, pi.ts_tgid);
 
 //For this next test, I am just going to use the task struct lists
 	findThreadGroupFromTaskStruct((gva_t) (&init_task), &pi);
