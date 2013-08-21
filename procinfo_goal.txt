@@ -1,0 +1,33 @@
+[168370.866095] Thread_group offset is 612
+[168398.139417]     {  "Android-x86 Gingerbread", /* entry name */
+[168398.139417]        0xC183D240, /* task struct root */
+[168398.139417]        3244, /* size of task_struct */
+[168398.139417]        440, /* offset of task_struct list */
+[168398.139417]        520, /* offset of pid */
+[168398.139417]        524, /* offset of tgid */
+[168398.139417]        556, /* offset of group_leader */
+[168398.139417]        612, /* offset of thread_group */
+[168398.139417]        532, /* offset of real_parent */
+[168398.139417]        468, /* offset of mm */
+[168398.139417]        4, /* offset of stack */
+[168398.139417]        732, /* offset of real_cred */
+[168398.139417]        736, /* offset of cred */
+[168398.139417]        4, /* offset of uid cred */
+[168398.139417]        8, /* offset of gid cred */
+[168398.139417]        20, /* offset of euid cred */
+[168398.139417]        24, /* offset of egid cred */
+[168398.139417]        36, /* offset of pgd in mm */
+[168398.139425]        740, /* offset of comm */
+[168398.139425]        16, /* size of comm */
+[168398.139425]        4, /* offset of vm_start in vma */
+[168398.139425]        8, /* offset of vm_end in vma */
+[168398.139425]        12, /* offset of vm_next in vma */
+[168398.139425]        80, /* offset of vm_file in vma */
+[168398.139425]        28, /* offset of vm_flags in vma */
+[168398.139425]        12, /* offset of dentry in file */
+[168398.139425]        20, /* offset of d_name in dentry */
+[168398.139425]        36, /* offset of d_iname in dentry */
+[168398.139425]        16, /* offset of d_parent in dentry */
+[168398.139425]        0, /* offset of task in thread_info */
+[168398.139425]     },
+[168398.139428] Information module registered.
