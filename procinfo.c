@@ -17,6 +17,12 @@
 
 #define INVALID_OFFSET 0xFFFFFFFF
 
+// here we define the length of specific types
+// the reason why I am doing it is because the size of variables
+// differs in different x86 and x64 system
+#define SIZEOF_ULONG sizeof(unsigned long)
+#define SIZEOF_PTR sizeof(void *)
+
 // here we define the information which we are going to
 // extract from the memory.  Following members whose perfix
 // is "ts_" means it comes from "task_struct", whose perfix
@@ -529,32 +535,38 @@ gva_t findGUIDFromCred(gva_t cred, ProcInfo* pPI) {
 /* 
  * in 2.6.31, the vma_struct starts with a vm_mm, then followed by
  * two unsigned long fields: vm_start and vm_end, then a pointer: vm_next
+ * starting 2.6.32, we have one more pointer: vm_prev after vm_next
  * However, in 3.8+, the vma_struct starts with vm_start and vm_end,
  * then two pointers: vm_next and vm_previous
  * @param vma: base address of vm_area_struct
  */
 
 gva_t findVMInfoFromVMA(gva_t vma, gva_t mm, ProcInfo* pPI) {
-	uint32_t offset = 0;
 	uint32_t* _mm = NULL;
+	uint32_t* _vm_prev = NULL;
 	if ((pPI == NULL) || !isKernelAddress(vma) || !isKernelAddress(mm)) {
 		return (0);
 	}
 	// check whether the first field is vm_mm
 	_mm = (uint32_t*) vma;	// get the mm pointer
 	// check if the value equals to mm
-	if ((*_mm) == mm) {
-		offset = 4;		// we get a vm_mm here
-		pPI->vma_vm_flags = 12 + sizeof(pgprot_t) + 4 + offset;	// vm_prev + vm_page_prot, for linux kernel 2.6		
+	if ((*_mm) == mm) {	// we get a vm_mm here
+		pPI->vma_vm_start = SIZEOF_PTR;
+		pPI->vma_vm_end = pPI->vma_vm_start + SIZEOF_ULONG;
+		pPI->vma_vm_next = pPI->vma_vm_end + SIZEOF_ULONG;
+		// see if we have vm_prev here
+		_vm_prev = (uint32_t*) (vma + pPI->vma_vm_next + SIZEOF_PTR);
+		pPI->vma_vm_flags = pPI->vma_vm_next + SIZEOF_PTR + sizeof(pgprot_t);
+		if (isKernelAddress(*_vm_prev))	{ // we have a mm_prev here
+			printk(KERN_INFO "vm_prev found!\n");
+			pPI->vma_vm_flags += SIZEOF_PTR;
+		}
 	}
 	else {
 		// do a double check, by checking 
 		printk(KERN_INFO "vm_mm double check passed!\n");
 		//pPI->vma_vm_flags = sizeof(rb_node) + 8 + 4 + sizeof(pgprot_t) + 4;	// vm_rb + rb_subtree_gap + *vm_mm + vm_page_prot
 	}
-	pPI->vma_vm_start = offset;
-	pPI->vma_vm_end = 4 + offset;
-	pPI->vma_vm_next = 8 + offset;
 	return (0);
 }
 
@@ -661,7 +673,7 @@ int try_vmi(void) {
 	printk(KERN_INFO "real_parent = %d, group_leader = %d\n", pi.ts_real_parent, pi.ts_group_leader);
 	
 	// test
-	printk(KERN_INFO "unsigned = %d\n", sizeof(unsigned long));
+	printk(KERN_INFO "unsigned long = %d\n", sizeof(void *));
 
 	gl = GET_FIELD(taskstruct, pi.ts_group_leader);
 	ret = findCommFromTaskStruct(gl, &pi);
