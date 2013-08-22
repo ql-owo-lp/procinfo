@@ -622,6 +622,12 @@ GET_FIELD(ts, pPI->ts_comm - i + SIZEOF_LIST_HEAD + 4))) {
 return (0);
 }
 
+// the key is to find the path struct,
+// then we can locate path.dentry
+gva_t findDentryFromFileStruct() {
+	
+}
+
 //pid and tgid are pretty much right on top of
 // the real_parent, except for the case when a stack
 // canary might be around. We will try to see
