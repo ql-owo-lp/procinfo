@@ -17,11 +17,26 @@
 
 #define INVALID_OFFSET 0xFFFFFFFF
 
+#define kernelAddr uint32_t	// for x86
+
 // here we define the length of specific types
 // the reason why I am doing it is because the size of variables
 // differs in different x86 and x64 system
-#define SIZEOF_ULONG sizeof(unsigned long)
-#define SIZEOF_PTR sizeof(void *)
+#define SIZEOF_ULONG sizeof(unsigned long)	// x86-4, x64-8
+#define SIZEOF_INT sizeof(int)	// x86-4, for x64 sometimes it can be 8
+#define SIZEOF_UINT sizeof(unsigned int)
+#define SIZEOF_ULLONG sizeof(unsigned long long)
+#define SIZEOF_PTR sizeof(void *)	// x86-4, x64-8
+
+#define SIZEOF_LIST_HEAD SIZEOF_PTR + SIZEOF_PTR 	// list_head, which consists of two pointers
+#define SIZEOF_COMM 16
+
+// define some known facts
+#define KERNEL_START 0xC0000000
+
+#define MAX_THREAD_INFO_SEARCH_SIZE 20
+#define MAX_TASK_STRUCT_SEARCH_SIZE 4000 
+#define MAX_MM_STRUCT_SEARCH_SIZE 100
 
 // here we define the information which we are going to
 // extract from the memory.  Following members whose perfix
@@ -64,13 +79,6 @@ typedef struct ProcInfo {
 	uint32_t dentry_d_parent;
 	uint32_t ti_task;
 } ProcInfo;
-
-#define MAX_THREAD_INFO_SEARCH_SIZE 20
-#define MAX_TASK_STRUCT_SEARCH_SIZE 4000 
-#define MAX_MM_STRUCT_SEARCH_SIZE 100
-#define KERNEL_START 0xC0000000
-#define SIZEOF_LIST_HEAD 8
-#define SIZEOF_COMM 16
 
 typedef uint32_t gva_t;
 typedef uint32_t gpa_t;
@@ -516,7 +524,7 @@ gva_t findThreadGroupFromTaskStruct(gva_t ts, ProcInfo* pPI) {
  * to check this is about check if there is a put_addr pointer
  */
 gva_t findGUIDFromCred(gva_t cred, ProcInfo* pPI) {
-	uint32_t offset = 0;
+	uint32_t offset = SIZEOF_INT;	// var: usage
 	uint32_t* _put_addr = NULL;
 	if ((pPI == NULL) || !isKernelAddress(cred)) {
 		return (0);
@@ -524,11 +532,11 @@ gva_t findGUIDFromCred(gva_t cred, ProcInfo* pPI) {
 	// now test the put_addr
 	_put_addr = (uint32_t*) (cred + 8);
 	if (isKernelAddress(*_put_addr))
-		offset = 12;
-	pPI->cred_uid = 4 + offset;
-	pPI->cred_gid = 8 + offset;
-	pPI->cred_euid = 20 + offset;
-	pPI->cred_egid = 24 + offset;
+		offset += SIZEOF_INT + SIZEOF_PTR + SIZEOF_ULONG;// var: subscribers + put_addr + magic
+	pPI->cred_uid = offset;
+	pPI->cred_gid = pPI->cred_uid + SIZEOF_UINT;	// + uid
+	pPI->cred_euid = pPI->cred_gid + SIZEOF_UINT + SIZEOF_UINT + SIZEOF_UINT;// + gid + suid + sgid
+	pPI->cred_egid = pPI->cred_euid + SIZEOF_UINT;
 	return (0);
 }
 
@@ -556,18 +564,32 @@ gva_t findVMInfoFromVMA(gva_t vma, gva_t mm, ProcInfo* pPI) {
 		pPI->vma_vm_next = pPI->vma_vm_end + SIZEOF_ULONG;
 		// see if we have vm_prev here
 		_vm_prev = (uint32_t*) (vma + pPI->vma_vm_next + SIZEOF_PTR);
+		// the size of prprot_t is unsure, by default it is unsigned long
+		// however, starting for 2.6.34, in arch/sh/include/asm/page.h, it comes to be unsigned long long
 		pPI->vma_vm_flags = pPI->vma_vm_next + SIZEOF_PTR + sizeof(pgprot_t);
-		if (isKernelAddress(*_vm_prev))	{ // we have a mm_prev here
+		if (isKernelAddress(*_vm_prev)) { // we have a vm_prev here
+			// do a double check here, go to this one's previous and then go next, we should return
+			if (*((uint32_t*) ((*_vm_prev) + pPI->vma_vm_next)) != vma) {
+				printk(KERN_INFO "double check fails when grabbing vm_prev!\n");
+				return (0);
+			}
 			printk(KERN_INFO "vm_prev found!\n");
 			pPI->vma_vm_flags += SIZEOF_PTR;
-		}
+		} else if ((*_vm_prev) == 0) {
+			printk(KERN_INFO "vm_prev found! this is an init vm area\n");
+			pPI->vma_vm_flags += SIZEOF_PTR;
+		} else { 	// debug
+		printk(KERN_INFO "vm_prev value: 0x%x!\n", *_vm_prev);
 	}
-	else {
-		// do a double check, by checking 
-		printk(KERN_INFO "vm_mm double check passed!\n");
-		//pPI->vma_vm_flags = sizeof(rb_node) + 8 + 4 + sizeof(pgprot_t) + 4;	// vm_rb + rb_subtree_gap + *vm_mm + vm_page_prot
-	}
-	return (0);
+} else {
+	// do a double check, by checking 
+printk(KERN_INFO "vm_mm double check passed!\n");
+//pPI->vma_vm_flags = sizeof(rb_node) + 8 + 4 + sizeof(pgprot_t) + 4;	// vm_rb + rb_subtree_gap + *vm_mm + vm_page_prot
+}
+ // now search for vm_file, what I am going to do is to find anon_vma_node, which
+ // is a list_head, anon_vma, which is a pointer, following is vm_ops, which is also a pointer,
+ // which can be used for double check
+return (0);
 }
 
 //we find cred by searching backwards starting from comm
@@ -576,28 +598,28 @@ gva_t findVMInfoFromVMA(gva_t vma, gva_t mm, ProcInfo* pPI) {
 // followed by real_cred and cred (both of which are pointers)
 // followed by stuff (in 2.6.32) and then comm
 gva_t findCredFromTaskStruct(gva_t ts, ProcInfo* pPI) {
-	uint32_t i = 0;
-	if ((pPI == NULL) || (pPI->ts_comm == INVALID_OFFSET))
-		return (0);
-	if (!isStructKernelAddress(ts, MAX_TASK_STRUCT_SEARCH_SIZE))
-		return (0);
+uint32_t i = 0;
+if ((pPI == NULL) || (pPI->ts_comm == INVALID_OFFSET))
+return (0);
+if (!isStructKernelAddress(ts, MAX_TASK_STRUCT_SEARCH_SIZE))
+return (0);
 
 	//we start at 16 because of the list_head followed by
 	// the two pointers
-	for (i = 16; i < pPI->ts_comm; i += 4) {
-		if (isListHead(GET_FIELD(ts, pPI->ts_comm - i)) && isKernelAddress(
-		GET_FIELD(ts, pPI->ts_comm - i + SIZEOF_LIST_HEAD)) && isKernelAddress(
-		GET_FIELD(ts, pPI->ts_comm - i + SIZEOF_LIST_HEAD + 4))) {
-			if (pPI->ts_real_cred == INVALID_OFFSET) {
-				pPI->ts_real_cred = pPI->ts_comm - i + SIZEOF_LIST_HEAD;
-			}
-			if (pPI->ts_cred == INVALID_OFFSET) {
-				pPI->ts_cred = pPI->ts_comm - i + SIZEOF_LIST_HEAD + 4;
-			}
-			return (ts + pPI->ts_comm - i + SIZEOF_LIST_HEAD + 4);
-		}
+for (i = 16; i < pPI->ts_comm; i += 4) {
+if (isListHead(GET_FIELD(ts, pPI->ts_comm - i)) && isKernelAddress(
+GET_FIELD(ts, pPI->ts_comm - i + SIZEOF_LIST_HEAD)) && isKernelAddress(
+GET_FIELD(ts, pPI->ts_comm - i + SIZEOF_LIST_HEAD + 4))) {
+	if (pPI->ts_real_cred == INVALID_OFFSET) {
+		pPI->ts_real_cred = pPI->ts_comm - i + SIZEOF_LIST_HEAD;
 	}
-	return (0);
+	if (pPI->ts_cred == INVALID_OFFSET) {
+		pPI->ts_cred = pPI->ts_comm - i + SIZEOF_LIST_HEAD + 4;
+	}
+	return (ts + pPI->ts_comm - i + SIZEOF_LIST_HEAD + 4);
+}
+}
+return (0);
 }
 
 //pid and tgid are pretty much right on top of
@@ -608,13 +630,13 @@ gva_t findCredFromTaskStruct(gva_t ts, ProcInfo* pPI) {
 // both of which are small numbers - so we try it this
 // way
 gva_t findPIDFromTaskStruct(gva_t ts, ProcInfo* pPI) {
-	uint32_t offset = 0;
-	if ((pPI == NULL) || (pPI->ts_real_parent == INVALID_OFFSET)) {
-		return (0);
-	}
-	if (!isStructKernelAddress(ts, MAX_TASK_STRUCT_SEARCH_SIZE)) {
-		return (0);
-	}
+uint32_t offset = 0;
+if ((pPI == NULL) || (pPI->ts_real_parent == INVALID_OFFSET)) {
+return (0);
+}
+if (!isStructKernelAddress(ts, MAX_TASK_STRUCT_SEARCH_SIZE)) {
+return (0);
+}
 
 	//see if the field before real_parent is a canary
 	//we do this by seeing if the field anded with 0xFFFF0000
@@ -622,189 +644,189 @@ gva_t findPIDFromTaskStruct(gva_t ts, ProcInfo* pPI) {
 	// very likely to be true
 	//Whereas, if it is a tgid, then this is likely to be false - especially
 	// if we are doing this check early after the system boots up
-	if (GET_FIELD(ts, pPI->ts_real_parent - 4) & 0xFFFF0000) {
-		offset = 4;
-	}
+if (GET_FIELD(ts, pPI->ts_real_parent - 4) & 0xFFFF0000) {
+offset = 4;
+}
 
-	if (pPI->ts_pid == INVALID_OFFSET) {
-		pPI->ts_pid = pPI->ts_real_parent - 8 - offset;
-	}
-	if (pPI->ts_tgid == INVALID_OFFSET) {
-		pPI->ts_tgid = pPI->ts_real_parent - 4 - offset;
-	}
-	return (ts + pPI->ts_real_parent - 8 - offset);
+if (pPI->ts_pid == INVALID_OFFSET) {
+pPI->ts_pid = pPI->ts_real_parent - 8 - offset;
+}
+if (pPI->ts_tgid == INVALID_OFFSET) {
+pPI->ts_tgid = pPI->ts_real_parent - 4 - offset;
+}
+return (ts + pPI->ts_real_parent - 8 - offset);
 }
 
 int try_vmi(void) {
 	//first we will try to get the threadinfo structure and etc
-	struct ProcInfo pi;
-	uint32_t i = 0;
+struct ProcInfo pi;
+uint32_t i = 0;
 
-	gva_t taskstruct = 0;
-	gva_t mmstruct = 0;
-	gva_t vmastruct = 0;
-	gva_t threadinfo = getESP() & ~8191;
+gva_t taskstruct = 0;
+gva_t mmstruct = 0;
+gva_t vmastruct = 0;
+gva_t threadinfo = getESP() & ~8191;
 
-	gva_t ret = 0;
-	gva_t tempTask = 0;
+gva_t ret = 0;
+gva_t tempTask = 0;
 
-	gva_t gl = 0;
+gva_t gl = 0;
 
-	memset(&pi, INVALID_OFFSET, sizeof(ProcInfo));
+memset(&pi, INVALID_OFFSET, sizeof(ProcInfo));
 
-	printk(KERN_INFO "ThreadInfo @ [0x%x]\n", threadinfo);
-	taskstruct = findTaskStructFromThreadInfo(threadinfo, &pi.ti_task,
-			&pi.ts_stack, 0);
-	printk(KERN_INFO "task_struct @ [0x%x] TSOFFSET = %d, TIOFFSET = %d\n", taskstruct, pi.ti_task, pi.ts_stack);
+printk(KERN_INFO "ThreadInfo @ [0x%x]\n", threadinfo);
+taskstruct = findTaskStructFromThreadInfo(threadinfo, &pi.ti_task, &pi.ts_stack,
+	0);
+printk(KERN_INFO "task_struct @ [0x%x] TSOFFSET = %d, TIOFFSET = %d\n", taskstruct, pi.ti_task, pi.ts_stack);
 
-	mmstruct = findMMStructFromTaskStruct(taskstruct, &pi.ts_mm, &pi.mm_pgd, 0);
-	printk(KERN_INFO "mm_struct @ [0x%x] mmOFFSET = %d, pgdOFFSET = %d\n", mmstruct, pi.ts_mm, pi.mm_pgd);
+mmstruct = findMMStructFromTaskStruct(taskstruct, &pi.ts_mm, &pi.mm_pgd, 0);
+printk(KERN_INFO "mm_struct @ [0x%x] mmOFFSET = %d, pgdOFFSET = %d\n", mmstruct, pi.ts_mm, pi.mm_pgd);
 
-	vmastruct = findVMAStructFromMMStruct(mmstruct);
-	printk(KERN_INFO "vm_area_struct @ [0x%x]\n", vmastruct);
-	
-	findVMInfoFromVMA(vmastruct, mmstruct, &pi);
-	printk(KERN_INFO "vm_start = %d, vm_end = %d,vm_next = %d, vm_flags = %d\n", pi.vma_vm_start, pi.vma_vm_end, pi.vma_vm_next, pi.vma_vm_flags);
-	
-	findTaskStructListFromTaskStruct(taskstruct, pi.ts_mm, &pi.ts_tasks, 0);
-	printk(KERN_INFO "task_struct offset = %d\n", pi.ts_tasks);
+vmastruct = findVMAStructFromMMStruct(mmstruct);
+printk(KERN_INFO "vm_area_struct @ [0x%x]\n", vmastruct);
 
-	findRealParentGroupLeaderFromTaskStruct(taskstruct, &pi);
-	printk(KERN_INFO "real_parent = %d, group_leader = %d\n", pi.ts_real_parent, pi.ts_group_leader);
-	
+findVMInfoFromVMA(vmastruct, mmstruct, &pi);
+printk(KERN_INFO "vm_start = %d, vm_end = %d,vm_next = %d, vm_flags = %d\n", pi.vma_vm_start, pi.vma_vm_end, pi.vma_vm_next, pi.vma_vm_flags);
+
+findTaskStructListFromTaskStruct(taskstruct, pi.ts_mm, &pi.ts_tasks, 0);
+printk(KERN_INFO "task_struct offset = %d\n", pi.ts_tasks);
+
+findRealParentGroupLeaderFromTaskStruct(taskstruct, &pi);
+printk(KERN_INFO "real_parent = %d, group_leader = %d\n", pi.ts_real_parent, pi.ts_group_leader);
+
 	// test
-	printk(KERN_INFO "unsigned long = %d\n", sizeof(void *));
+	//printk(KERN_INFO "unsigned long = %d\n", sizeof(void *));
 
-	gl = GET_FIELD(taskstruct, pi.ts_group_leader);
-	ret = findCommFromTaskStruct(gl, &pi);
+gl = GET_FIELD(taskstruct, pi.ts_group_leader);
+ret = findCommFromTaskStruct(gl, &pi);
 	//don't forget to to get back to the head of the task struct
 	// by subtracting ts_tasks offset
-	tempTask = GET_FIELD(gl, pi.ts_tasks) - pi.ts_tasks;
-	while ((ret == 0) && (tempTask != gl) && (isKernelAddress(tempTask))) {
-		ret = findCommFromTaskStruct(tempTask, &pi);
-		//move to the next task_struct
-		tempTask = GET_FIELD(tempTask, pi.ts_tasks) - pi.ts_tasks;
-	}
+tempTask = GET_FIELD(gl, pi.ts_tasks) - pi.ts_tasks;
+while ((ret == 0) && (tempTask != gl) && (isKernelAddress(tempTask))) {
+ret = findCommFromTaskStruct(tempTask, &pi);
+//move to the next task_struct
+tempTask = GET_FIELD(tempTask, pi.ts_tasks) - pi.ts_tasks;
+}
 
-	if (ret)
-		printk(KERN_INFO "Comm offset is = %d, %s\n", pi.ts_comm, (char*)(taskstruct + pi.ts_comm));
+if (ret)
+printk(KERN_INFO "Comm offset is = %d, %s\n", pi.ts_comm, (char*)(taskstruct + pi.ts_comm));
 
-	findCredFromTaskStruct(taskstruct, &pi);
-	printk(KERN_INFO "real_cred = %d, cred = %d\n", pi.ts_real_cred, pi.ts_cred);
+findCredFromTaskStruct(taskstruct, &pi);
+printk(KERN_INFO "real_cred = %d, cred = %d\n", pi.ts_real_cred, pi.ts_cred);
 
-	findGUIDFromCred(taskstruct + pi.ts_real_cred, &pi);
-	printk(KERN_INFO "cred_uid = %d, cred_gid = %d, cred_euid = %d, cred_egid = %d\n", pi.cred_uid, pi.cred_gid, pi.cred_euid, pi.cred_egid);
-	
-	findPIDFromTaskStruct(taskstruct, &pi);
-	printk(KERN_INFO "pid = %d, tgid = %d\n", pi.ts_pid, pi.ts_tgid);
+findGUIDFromCred(taskstruct + pi.ts_real_cred, &pi);
+printk(KERN_INFO "cred_uid = %d, cred_gid = %d, cred_euid = %d, cred_egid = %d\n", pi.cred_uid, pi.cred_gid, pi.cred_euid, pi.cred_egid);
+
+findPIDFromTaskStruct(taskstruct, &pi);
+printk(KERN_INFO "pid = %d, tgid = %d\n", pi.ts_pid, pi.ts_tgid);
 
 //For this next test, I am just going to use the task struct lists
-	findThreadGroupFromTaskStruct((gva_t) (&init_task), &pi);
-	printk(KERN_INFO "Thread_group offset is %d\n", pi.ts_thread_group);
+findThreadGroupFromTaskStruct((gva_t) (&init_task), &pi);
+printk(KERN_INFO "Thread_group offset is %d\n", pi.ts_thread_group);
 
-	for (i = 0; i < 100; i += 4) {
-		//printk(KERN_INFO "[%d, %x]%x\n", i + pi.ts_group_leader, (gva_t)&init_task + i + pi.ts_group_leader, GET_FIELD((gva_t)&init_task, i + pi.ts_group_leader));
-	}
+for (i = 0; i < 100; i += 4) {
+//printk(KERN_INFO "[%d, %x]%x\n", i + pi.ts_group_leader, (gva_t)&init_task + i + pi.ts_group_leader, GET_FIELD((gva_t)&init_task, i + pi.ts_group_leader));
+}
 
-	return (0);
+return (0);
 }
 
 int init_module(void) {
-	struct vm_area_struct vma;
-	struct file filestruct;
-	struct dentry dentrystr;
-	struct cred credstruct;
-	struct thread_info ti;
+struct vm_area_struct vma;
+struct file filestruct;
+struct dentry dentrystr;
+struct cred credstruct;
+struct thread_info ti;
 
-	try_vmi();
+try_vmi();
 //printk(KERN_INFO "INIT_TASK_MM = [%p]\n", init_task.mm);
 //printk(KERN_INFO "INIT_TASK_MM2 = [%d] ABCD\n", ((int)&(init_task.mm->pgd) - (int)&init_task.mm));
 //printk(KERN_INFO "INIT_TASK_MM2 = [%x, %x] ABCD\n", init_task.real_parent, &init_task);
-	return (-1);
+return (-1);
 
-	printk(KERN_INFO
-			"    {  \"%s\", /* entry name */\n"
-			"       0x%08lX, /* task struct root */\n"
-			"       %d, /* size of task_struct */\n"
-			"       %d, /* offset of task_struct list */\n"
-			"       %d, /* offset of pid */\n"
-			"       %d, /* offset of tgid */\n"
-			"       %d, /* offset of group_leader */\n"
-			"       %d, /* offset of thread_group */\n"
-			"       %d, /* offset of real_parent */\n"
-			"       %d, /* offset of mm */\n"
-			"       %d, /* offset of stack */\n"
-			"       %d, /* offset of real_cred */\n"
-			"       %d, /* offset of cred */\n"
-			"       %d, /* offset of uid cred */\n"
-			"       %d, /* offset of gid cred */\n"
-			"       %d, /* offset of euid cred */\n"
-			"       %d, /* offset of egid cred */\n"
-			"       %d, /* offset of pgd in mm */\n"
-			"       %d, /* offset of arg_start in mm */\n"
-			"       %d, /* offset of start_brk in mm */\n"
-			"       %d, /* offset of brk in mm */\n"
-			"       %d, /* offset of start_stack in mm */\n",
+printk(KERN_INFO
+	"    {  \"%s\", /* entry name */\n"
+	"       0x%08lX, /* task struct root */\n"
+	"       %d, /* size of task_struct */\n"
+	"       %d, /* offset of task_struct list */\n"
+	"       %d, /* offset of pid */\n"
+	"       %d, /* offset of tgid */\n"
+	"       %d, /* offset of group_leader */\n"
+	"       %d, /* offset of thread_group */\n"
+	"       %d, /* offset of real_parent */\n"
+	"       %d, /* offset of mm */\n"
+	"       %d, /* offset of stack */\n"
+	"       %d, /* offset of real_cred */\n"
+	"       %d, /* offset of cred */\n"
+	"       %d, /* offset of uid cred */\n"
+	"       %d, /* offset of gid cred */\n"
+	"       %d, /* offset of euid cred */\n"
+	"       %d, /* offset of egid cred */\n"
+	"       %d, /* offset of pgd in mm */\n"
+	"       %d, /* offset of arg_start in mm */\n"
+	"       %d, /* offset of start_brk in mm */\n"
+	"       %d, /* offset of brk in mm */\n"
+	"       %d, /* offset of start_stack in mm */\n",
 
-			"Android-x86 Gingerbread",
-			(long)&init_task,
-			sizeof(init_task),
-			(int)&init_task.tasks - (int)&init_task,
-			(int)&init_task.pid - (int)&init_task,
-			(int)&init_task.tgid - (int)&init_task,
-			(int)&init_task.group_leader - (int)&init_task,
-			(int)&init_task.thread_group - (int)&init_task,
-			(int)&init_task.real_parent - (int)&init_task,
-			(int)&init_task.mm - (int)&init_task,
-			(int)&init_task.stack - (int)&init_task,
-			(int)&init_task.real_cred - (int)&init_task,
-			(int)&init_task.cred - (int)&init_task,
-			(int)&credstruct.uid - (int)&credstruct,
-			(int)&credstruct.gid - (int)&credstruct,
-			(int)&credstruct.euid - (int)&credstruct,
-			(int)&credstruct.egid - (int)&credstruct,
-			(int)&init_task.mm->pgd - (int)init_task.mm,
-			(int)&init_task.mm->arg_start - (int)init_task.mm,
-			(int)&init_task.mm->start_brk - (int)init_task.mm,
-			(int)&init_task.mm->brk - (int)init_task.mm,
-			(int)&init_task.mm->start_stack - (int)init_task.mm
-	);
+	"Android-x86 Gingerbread",
+	(long)&init_task,
+	sizeof(init_task),
+	(int)&init_task.tasks - (int)&init_task,
+	(int)&init_task.pid - (int)&init_task,
+	(int)&init_task.tgid - (int)&init_task,
+	(int)&init_task.group_leader - (int)&init_task,
+	(int)&init_task.thread_group - (int)&init_task,
+	(int)&init_task.real_parent - (int)&init_task,
+	(int)&init_task.mm - (int)&init_task,
+	(int)&init_task.stack - (int)&init_task,
+	(int)&init_task.real_cred - (int)&init_task,
+	(int)&init_task.cred - (int)&init_task,
+	(int)&credstruct.uid - (int)&credstruct,
+	(int)&credstruct.gid - (int)&credstruct,
+	(int)&credstruct.euid - (int)&credstruct,
+	(int)&credstruct.egid - (int)&credstruct,
+	(int)&init_task.mm->pgd - (int)init_task.mm,
+	(int)&init_task.mm->arg_start - (int)init_task.mm,
+	(int)&init_task.mm->start_brk - (int)init_task.mm,
+	(int)&init_task.mm->brk - (int)init_task.mm,
+	(int)&init_task.mm->start_stack - (int)init_task.mm
+);
 
-	printk(KERN_INFO
-			"       %d, /* offset of comm */\n"
-			"       %d, /* size of comm */\n"
-			"       %d, /* offset of vm_start in vma */\n"
-			"       %d, /* offset of vm_end in vma */\n"
-			"       %d, /* offset of vm_next in vma */\n"
-			"       %d, /* offset of vm_file in vma */\n"
-			"       %d, /* offset of vm_flags in vma */\n"
-			"       %d, /* offset of dentry in file */\n"
-			"       %d, /* offset of d_name in dentry */\n"
-			"       %d, /* offset of d_iname in dentry */\n"
-			"       %d, /* offset of d_parent in dentry */\n"
-			"       %d, /* offset of task in thread_info */\n"
-			"    },\n",
+printk(KERN_INFO
+	"       %d, /* offset of comm */\n"
+	"       %d, /* size of comm */\n"
+	"       %d, /* offset of vm_start in vma */\n"
+	"       %d, /* offset of vm_end in vma */\n"
+	"       %d, /* offset of vm_next in vma */\n"
+	"       %d, /* offset of vm_file in vma */\n"
+	"       %d, /* offset of vm_flags in vma */\n"
+	"       %d, /* offset of dentry in file */\n"
+	"       %d, /* offset of d_name in dentry */\n"
+	"       %d, /* offset of d_iname in dentry */\n"
+	"       %d, /* offset of d_parent in dentry */\n"
+	"       %d, /* offset of task in thread_info */\n"
+	"    },\n",
 
-			(int)&init_task.comm - (int)&init_task,
-			sizeof(init_task.comm),
-			(int)&vma.vm_start - (int)&vma,
-			(int)&vma.vm_end - (int)&vma,
-			(int)&vma.vm_next - (int)&vma,
-			(int)&vma.vm_file - (int)&vma,
-			(int)&vma.vm_flags - (int)&vma,
-			(int)&filestruct.f_dentry - (int)&filestruct,
-			(int)&dentrystr.d_name - (int)&dentrystr,
-			(int)&dentrystr.d_iname - (int)&dentrystr,
-			(int)&dentrystr.d_parent - (int)&dentrystr,
-			(int)&ti.task - (int)&ti
-	);
+	(int)&init_task.comm - (int)&init_task,
+	sizeof(init_task.comm),
+	(int)&vma.vm_start - (int)&vma,
+	(int)&vma.vm_end - (int)&vma,
+	(int)&vma.vm_next - (int)&vma,
+	(int)&vma.vm_file - (int)&vma,
+	(int)&vma.vm_flags - (int)&vma,
+	(int)&filestruct.f_dentry - (int)&filestruct,
+	(int)&dentrystr.d_name - (int)&dentrystr,
+	(int)&dentrystr.d_iname - (int)&dentrystr,
+	(int)&dentrystr.d_parent - (int)&dentrystr,
+	(int)&ti.task - (int)&ti
+);
 
-	printk(KERN_INFO "Information module registered.\n");
-	return -1;
+printk(KERN_INFO "Information module registered.\n");
+return -1;
 }
 
 void cleanup_module(void) {
-	printk(KERN_INFO "Information module removed.\n");
+printk(KERN_INFO "Information module removed.\n");
 }
 
 MODULE_LICENSE("GPL");
