@@ -19,7 +19,6 @@
 
 #define offset_t uint32_t	// define the offset type
 #define kernelAddr_t uint32_t	// kernel address offset type
-
 // here we define the length of specific types
 // the reason why I am doing it is because the size of variables
 // differs in different x86 and x64 system
@@ -28,7 +27,6 @@
 #define SIZEOF_UINT sizeof(unsigned int)
 #define SIZEOF_ULLONG sizeof(unsigned long long)
 #define SIZEOF_PTR sizeof(void *)	// x86-4, x64-8
-
 #define SIZEOF_LIST_HEAD SIZEOF_PTR + SIZEOF_PTR 	// list_head, which consists of two pointers
 #define SIZEOF_COMM 16
 
@@ -46,41 +44,12 @@
 // "mm_" means mm_struct
 // "vma_" means "vm_area_struct"
 typedef struct ProcInfo {
-	offset_t ts_tasks;
-	offset_t ts_pid;
-	offset_t ts_tgid;
-	offset_t ts_group_leader;
-	offset_t ts_thread_group;
-	offset_t ts_real_parent;
-	offset_t ts_mm;
+	offset_t ts_tasks;offset_t ts_pid;offset_t ts_tgid;offset_t ts_group_leader;offset_t ts_thread_group;offset_t ts_real_parent;offset_t ts_mm;
 	union {
 		// corresponding to "void * stack" in task_struct,
 		// which bascially points to thread_info
-		offset_t ts_stack;
-		offset_t ts_thread_info;
-	};
-	offset_t ts_real_cred;
-	offset_t ts_cred;
-	offset_t ts_comm;
-	offset_t cred_uid;
-	offset_t cred_gid;
-	offset_t cred_euid;
-	offset_t cred_egid;
-	offset_t mm_pgd;
-	offset_t mm_arg_start;
-	offset_t mm_start_brk;
-	offset_t mm_brk;
-	offset_t mm_start_stack;
-	offset_t vma_vm_start;
-	offset_t vma_vm_end;
-	offset_t vma_vm_next;
-	offset_t vma_vm_file;
-	offset_t vma_vm_flags;
-	offset_t file_path_dentry;
-	offset_t dentry_d_name;
-	offset_t dentry_d_iname;
-	offset_t dentry_d_parent;
-	offset_t ti_task;
+		offset_t ts_stack;offset_t ts_thread_info;
+	};offset_t ts_real_cred;offset_t ts_cred;offset_t ts_comm;offset_t cred_uid;offset_t cred_gid;offset_t cred_euid;offset_t cred_egid;offset_t mm_pgd;offset_t mm_arg_start;offset_t mm_start_brk;offset_t mm_brk;offset_t mm_start_stack;offset_t vma_vm_start;offset_t vma_vm_end;offset_t vma_vm_next;offset_t vma_vm_file;offset_t vma_vm_flags;offset_t file_path_dentry;offset_t dentry_d_name;offset_t dentry_d_iname;offset_t dentry_d_parent;offset_t ti_task;
 } ProcInfo;
 
 typedef uint32_t gva_t;
@@ -607,8 +576,8 @@ return (0);
 if (!isStructKernelAddress(ts, MAX_TASK_STRUCT_SEARCH_SIZE))
 return (0);
 
-	//we start at 16 because of the list_head followed by
-	// the two pointers
+ //we start at 16 because of the list_head followed by
+ // the two pointers
 for (i = 16; i < pPI->ts_comm; i += 4) {
 if (isListHead(GET_FIELD(ts, pPI->ts_comm - i)) && isKernelAddress(
 GET_FIELD(ts, pPI->ts_comm - i + SIZEOF_LIST_HEAD)) && isKernelAddress(
@@ -628,7 +597,7 @@ return (0);
 // the key is to find the path struct,
 // then we can locate path.dentry
 gva_t findDentryFromFileStruct() {
-	
+
 }
 
 //pid and tgid are pretty much right on top of
@@ -647,12 +616,12 @@ if (!isStructKernelAddress(ts, MAX_TASK_STRUCT_SEARCH_SIZE)) {
 return (0);
 }
 
-	//see if the field before real_parent is a canary
-	//we do this by seeing if the field anded with 0xFFFF0000
-	// has any 1's in it. The idea is that if its a canary - this is
-	// very likely to be true
-	//Whereas, if it is a tgid, then this is likely to be false - especially
-	// if we are doing this check early after the system boots up
+ //see if the field before real_parent is a canary
+ //we do this by seeing if the field anded with 0xFFFF0000
+ // has any 1's in it. The idea is that if its a canary - this is
+ // very likely to be true
+ //Whereas, if it is a tgid, then this is likely to be false - especially
+ // if we are doing this check early after the system boots up
 if (GET_FIELD(ts, pPI->ts_real_parent - 4) & 0xFFFF0000) {
 offset = 4;
 }
@@ -666,79 +635,127 @@ pPI->ts_tgid = pPI->ts_real_parent - 4 - offset;
 return (ts + pPI->ts_real_parent - 8 - offset);
 }
 
+// scan offset information into procinfo
+void scan_offset_profile(ProcInfo* pi) {
+struct vm_area_struct vma;
+struct file filestruct;
+struct dentry dentrystr;
+struct cred credstruct;
+struct thread_info ti;
+
+pi->ts_tasks = (int) &init_task.tasks - (int) &init_task;
+pi->ts_pid = (int) &init_task.pid - (int) &init_task;
+pi->ts_tgid = (int) &init_task.tgid - (int) &init_task;
+pi->ts_group_leader = (int) &init_task.group_leader - (int) &init_task;
+pi->ts_thread_group = (int) &init_task.thread_group - (int) &init_task;
+pi->ts_real_parent = (int) &init_task.real_parent - (int) &init_task;
+pi->ts_mm = (int) &init_task.mm - (int) &init_task;
+pi->ts_stack = pi->ts_thread_info = (int) &init_task.stack - (int) &init_task;
+pi->ts_real_cred = (int) &init_task.real_cred - (int) &init_task;
+pi->ts_cred = (int) &init_task.cred - (int) &init_task;
+pi->ts_comm = (int) &init_task.comm - (int) &init_task;
+pi->cred_uid = (int) &credstruct.uid - (int) &credstruct;
+pi->cred_gid = (int) &credstruct.gid - (int) &credstruct;
+pi->cred_euid = (int) &credstruct.euid - (int) &credstruct;
+pi->cred_egid = (int) &credstruct.egid - (int) &credstruct;
+pi->mm_pgd = (int) &init_task.mm->pgd - (int) init_task.mm;
+pi->mm_arg_start = (int) &init_task.mm->arg_start - (int) init_task.mm;
+pi->mm_start_brk = (int) &init_task.mm->start_brk - (int) init_task.mm;
+ //pi->mm_brk = (int)&init_task.mm->brk - (int)init_task.mm;
+pi->mm_start_stack = (int) &init_task.mm->start_stack - (int) init_task.mm;
+pi->vma_vm_start = (int) &vma.vm_start - (int) &vma;
+pi->vma_vm_end = (int) &vma.vm_end - (int) &vma;
+pi->vma_vm_next = (int) &vma.vm_next - (int) &vma;
+pi->vma_vm_file = (int) &vma.vm_file - (int) &vma;
+pi->vma_vm_flags = (int) &vma.vm_flags - (int) &vma;
+pi->file_path_dentry = (int) &filestruct.f_dentry - (int) &filestruct;
+pi->dentry_d_name = (int) &dentrystr.d_name - (int) &dentrystr;
+pi->dentry_d_iname = (int) &dentrystr.d_iname - (int) &dentrystr;
+pi->dentry_d_parent = (int) &dentrystr.d_parent - (int) &dentrystr;
+pi->ti_task = (int) &ti.task - (int) &ti;
+}
 
 // print the procinfo struct
-void print_offset_struct(ProcInfo* pi) {
-	char* var_name = "OFFSET_PROFILE";
-	printk(KERN_INFO
-		"	%s.ts_tasks = 0x%x;\n"
-		"	%s.ts_pid = 0x%x;\n"
-		"	%s.ts_tgid = 0x%x;\n"
-		"	%s.ts_group_leader = 0x%x;\n"
-		"	%s.ts_thread_group = 0x%x;\n"
-		"	%s.ts_real_parent = 0x%x;\n"
-		"	%s.ts_mm = 0x%x;\n"
-		"	%s.ts_stack = 0x%x;\n"
-		"	%s.ts_thread_info = 0x%x;\n"
-		"	%s.ts_real_cred = 0x%x;\n"
-		"	%s.ts_cred = 0x%x;\n"
-		"	%s.ts_comm = 0x%x;\n"
-		"	%s.cred_uid = 0x%x;\n"
-		"	%s.cred_gid = 0x%x;\n"
-		"	%s.cred_euid = 0x%x;\n"
-		"	%s.cred_egid = 0x%x;\n"
-		"	%s.mm_pgd = 0x%x;\n"
-		"	%s.mm_arg_start = 0x%x;\n"
-		"	%s.mm_start_brk = 0x%x;\n"
-		"	%s.mm_brk = 0x%x;\n"
-		"	%s.mm_start_stack = 0x%x;\n"
-		"	%s.vma_vm_start = 0x%x;\n"
-		"	%s.vma_vm_end = 0x%x;\n"
-		"	%s.vma_vm_next = 0x%x;\n"
-		"	%s.vma_vm_file = 0x%x;\n"
-		"	%s.vma_vm_flags = 0x%x;\n"
-		"	%s.file_path_dentry = 0x%x;\n"
-		"	%s.dentry_d_name = 0x%x;\n"
-		"	%s.dentry_d_iname = 0x%x;\n"
-		"	%s.dentry_d_parent = 0x%x;\n"
-		"	%s.ti_task = 0x%x;\n",
+void print_offset_profile(ProcInfo* pi) {
+char* var_name = "OFFSET_PROFILE";
+printk(KERN_INFO
+"	%s.ts_tasks = 0x%x;\n"
+"	%s.ts_pid = 0x%x;\n"
+"	%s.ts_tgid = 0x%x;\n"
+"	%s.ts_group_leader = 0x%x;\n"
+"	%s.ts_thread_group = 0x%x;\n"
+"	%s.ts_real_parent = 0x%x;\n"
+"	%s.ts_mm = 0x%x;\n"
+"	%s.ts_stack = 0x%x;\n"
+"	%s.ts_thread_info = 0x%x;\n"
+"	%s.ts_real_cred = 0x%x;\n"
+"	%s.ts_cred = 0x%x;\n"
+"	%s.ts_comm = 0x%x;\n",
+var_name, pi->ts_tasks,
+var_name, pi->ts_pid,
+var_name, pi->ts_tgid,
+var_name, pi->ts_group_leader,
+var_name, pi->ts_thread_group,
+var_name, pi->ts_real_parent,
+var_name, pi->ts_mm,
+var_name, pi->ts_stack,
+var_name, pi->ts_thread_info,
+var_name, pi->ts_real_cred,
+var_name, pi->ts_cred,
+var_name, pi->ts_comm
+);
 
-		var_name, pi.ts_tasks,
-		var_name, pi.ts_pid,
-		var_name, pi.ts_tgid,
-		var_name, pi.ts_group_leader,
-		var_name, pi.ts_thread_group,
-		var_name, pi.ts_real_parent,
-		var_name, pi.ts_mm,
-		var_name, pi.ts_stack,
-		var_name, pi.ts_thread_info,
-		var_name, pi.ts_real_cred,
-		var_name, pi.ts_cred,
-		var_name, pi.ts_comm,
-		var_name, pi.cred_uid,
-		var_name, pi.cred_gid,
-		var_name, pi.cred_euid,
-		var_name, pi.cred_egid,
-		var_name, pi.mm_pgd,
-		var_name, pi.mm_arg_start,
-		var_name, pi.mm_start_brk,
-		var_name, pi.mm_brk,
-		var_name, pi.mm_start_stack,
-		var_name, pi.vma_vm_start,
-		var_name, pi.vma_vm_end,
-		var_name, pi.vma_vm_next,
-		var_name, pi.vma_vm_file,
-		var_name, pi.vma_vm_flags,
-		var_name, pi.file_path_dentry,
-		var_name, pi.dentry_d_name,
-		var_name, pi.dentry_d_iname,
-		var_name, pi.dentry_d_parent,
-		var_name, pi.ti_task
-	);
+printk(KERN_INFO
+"	%s.cred_uid = 0x%x;\n"
+"	%s.cred_gid = 0x%x;\n"
+"	%s.cred_euid = 0x%x;\n"
+"	%s.cred_egid = 0x%x;\n",
+var_name, pi->cred_uid,
+var_name, pi->cred_gid,
+var_name, pi->cred_euid,
+var_name, pi->cred_egid
+);
+
+printk(KERN_INFO
+"	%s.mm_pgd = 0x%x;\n"
+"	%s.mm_arg_start = 0x%x;\n"
+"	%s.mm_start_brk = 0x%x;\n"
+"	%s.mm_brk = 0x%x;\n"
+"	%s.mm_start_stack = 0x%x;\n",
+var_name, pi->mm_pgd,
+var_name, pi->mm_arg_start,
+var_name, pi->mm_start_brk,
+var_name, pi->mm_brk,
+var_name, pi->mm_start_stack
+);
+
+printk(KERN_INFO
+"	%s.vma_vm_start = 0x%x;\n"
+"	%s.vma_vm_end = 0x%x;\n"
+"	%s.vma_vm_next = 0x%x;\n"
+"	%s.vma_vm_file = 0x%x;\n"
+"	%s.vma_vm_flags = 0x%x;\n"
+"	%s.file_path_dentry = 0x%x;\n"
+"	%s.dentry_d_name = 0x%x;\n"
+"	%s.dentry_d_iname = 0x%x;\n"
+"	%s.dentry_d_parent = 0x%x;\n"
+"	%s.ti_task = 0x%x;\n",
+
+var_name, pi->vma_vm_start,
+var_name, pi->vma_vm_end,
+var_name, pi->vma_vm_next,
+var_name, pi->vma_vm_file,
+var_name, pi->vma_vm_flags,
+var_name, pi->file_path_dentry,
+var_name, pi->dentry_d_name,
+var_name, pi->dentry_d_iname,
+var_name, pi->dentry_d_parent,
+var_name, pi->ti_task
+);
 }
 
 int try_vmi(void) {
-	//first we will try to get the threadinfo structure and etc
+ //first we will try to get the threadinfo structure and etc
 struct ProcInfo pi;
 uint32_t i = 0;
 
@@ -756,7 +773,7 @@ memset(&pi, INVALID_OFFSET, sizeof(ProcInfo));
 
 printk(KERN_INFO "ThreadInfo @ [0x%x]\n", threadinfo);
 taskstruct = findTaskStructFromThreadInfo(threadinfo, &pi.ti_task, &pi.ts_stack,
-	0);
+0);
 printk(KERN_INFO "task_struct @ [0x%x] TSOFFSET = %d, TIOFFSET = %d\n", taskstruct, pi.ti_task, pi.ts_stack);
 
 mmstruct = findMMStructFromTaskStruct(taskstruct, &pi.ts_mm, &pi.mm_pgd, 0);
@@ -774,8 +791,8 @@ printk(KERN_INFO "task_struct offset = %d\n", pi.ts_tasks);
 findRealParentGroupLeaderFromTaskStruct(taskstruct, &pi);
 printk(KERN_INFO "real_parent = %d, group_leader = %d\n", pi.ts_real_parent, pi.ts_group_leader);
 
-	// test
-	//printk(KERN_INFO "unsigned long = %d\n", sizeof(void *));
+ // test
+ //printk(KERN_INFO "unsigned long = %d\n", sizeof(void *));
 
 gl = GET_FIELD(taskstruct, pi.ts_group_leader);
 ret = findCommFromTaskStruct(gl, &pi);
@@ -812,94 +829,14 @@ return (0);
 }
 
 int init_module(void) {
-struct vm_area_struct vma;
-struct file filestruct;
-struct dentry dentrystr;
-struct cred credstruct;
-struct thread_info ti;
+struct ProcInfo pi;
 
+if (0) {
 try_vmi();
-//printk(KERN_INFO "INIT_TASK_MM = [%p]\n", init_task.mm);
-//printk(KERN_INFO "INIT_TASK_MM2 = [%d] ABCD\n", ((int)&(init_task.mm->pgd) - (int)&init_task.mm));
-//printk(KERN_INFO "INIT_TASK_MM2 = [%x, %x] ABCD\n", init_task.real_parent, &init_task);
-return (-1);
-
-printk(KERN_INFO
-	"    {  \"%s\", /* entry name */\n"
-	"       0x%08lX, /* task struct root */\n"
-	"       %d, /* size of task_struct */\n"
-	"       %d, /* offset of task_struct list */\n"
-	"       %d, /* offset of pid */\n"
-	"       %d, /* offset of tgid */\n"
-	"       %d, /* offset of group_leader */\n"
-	"       %d, /* offset of thread_group */\n"
-	"       %d, /* offset of real_parent */\n"
-	"       %d, /* offset of mm */\n"
-	"       %d, /* offset of stack */\n"
-	"       %d, /* offset of real_cred */\n"
-	"       %d, /* offset of cred */\n"
-	"       %d, /* offset of uid cred */\n"
-	"       %d, /* offset of gid cred */\n"
-	"       %d, /* offset of euid cred */\n"
-	"       %d, /* offset of egid cred */\n"
-	"       %d, /* offset of pgd in mm */\n"
-	"       %d, /* offset of arg_start in mm */\n"
-	"       %d, /* offset of start_brk in mm */\n"
-	"       %d, /* offset of brk in mm */\n"
-	"       %d, /* offset of start_stack in mm */\n",
-
-	"Android-x86 Gingerbread",
-	(long)&init_task,
-	sizeof(init_task),
-	(int)&init_task.tasks - (int)&init_task,
-	(int)&init_task.pid - (int)&init_task,
-	(int)&init_task.tgid - (int)&init_task,
-	(int)&init_task.group_leader - (int)&init_task,
-	(int)&init_task.thread_group - (int)&init_task,
-	(int)&init_task.real_parent - (int)&init_task,
-	(int)&init_task.mm - (int)&init_task,
-	(int)&init_task.stack - (int)&init_task,
-	(int)&init_task.real_cred - (int)&init_task,
-	(int)&init_task.cred - (int)&init_task,
-	(int)&credstruct.uid - (int)&credstruct,
-	(int)&credstruct.gid - (int)&credstruct,
-	(int)&credstruct.euid - (int)&credstruct,
-	(int)&credstruct.egid - (int)&credstruct,
-	(int)&init_task.mm->pgd - (int)init_task.mm,
-	(int)&init_task.mm->arg_start - (int)init_task.mm,
-	(int)&init_task.mm->start_brk - (int)init_task.mm,
-	(int)&init_task.mm->brk - (int)init_task.mm,
-	(int)&init_task.mm->start_stack - (int)init_task.mm
-);
-
-printk(KERN_INFO
-	"       %d, /* offset of comm */\n"
-	"       %d, /* size of comm */\n"
-	"       %d, /* offset of vm_start in vma */\n"
-	"       %d, /* offset of vm_end in vma */\n"
-	"       %d, /* offset of vm_next in vma */\n"
-	"       %d, /* offset of vm_file in vma */\n"
-	"       %d, /* offset of vm_flags in vma */\n"
-	"       %d, /* offset of dentry in file */\n"
-	"       %d, /* offset of d_name in dentry */\n"
-	"       %d, /* offset of d_iname in dentry */\n"
-	"       %d, /* offset of d_parent in dentry */\n"
-	"       %d, /* offset of task in thread_info */\n"
-	"    },\n",
-
-	(int)&init_task.comm - (int)&init_task,
-	sizeof(init_task.comm),
-	(int)&vma.vm_start - (int)&vma,
-	(int)&vma.vm_end - (int)&vma,
-	(int)&vma.vm_next - (int)&vma,
-	(int)&vma.vm_file - (int)&vma,
-	(int)&vma.vm_flags - (int)&vma,
-	(int)&filestruct.f_dentry - (int)&filestruct,
-	(int)&dentrystr.d_name - (int)&dentrystr,
-	(int)&dentrystr.d_iname - (int)&dentrystr,
-	(int)&dentrystr.d_parent - (int)&dentrystr,
-	(int)&ti.task - (int)&ti
-);
+} else {
+scan_offset_profile(&pi);
+print_offset_profile(&pi);
+}
 
 printk(KERN_INFO "Information module registered.\n");
 return -1;
@@ -910,3 +847,4 @@ printk(KERN_INFO "Information module removed.\n");
 }
 
 MODULE_LICENSE("GPL");
+
