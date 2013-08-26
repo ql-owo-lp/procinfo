@@ -17,7 +17,8 @@
 
 #define INVALID_OFFSET 0xFFFFFFFF
 
-#define kernelAddr uint32_t	// for x86
+#define offset_t uint32_t	// define the offset type
+#define kernelAddr_t uint32_t	// kernel address offset type
 
 // here we define the length of specific types
 // the reason why I am doing it is because the size of variables
@@ -39,45 +40,47 @@
 #define MAX_MM_STRUCT_SEARCH_SIZE 100
 
 // here we define the information which we are going to
-// extract from the memory.  Following members whose perfix
-// is "ts_" means it comes from "task_struct", whose perfix
-// is "ti_" means it comes from "thread_info"
+// extract from the memory.
+// perfix "ts_" means it comes from "task_struct"
+// "ti_" means it comes from "thread_info"
+// "mm_" means mm_struct
+// "vma_" means "vm_area_struct"
 typedef struct ProcInfo {
-	uint32_t ts_tasks;
-	uint32_t ts_pid;
-	uint32_t ts_tgid;
-	uint32_t ts_group_leader;
-	uint32_t ts_thread_group;
-	uint32_t ts_real_parent;
-	uint32_t ts_mm;
+	offset_t ts_tasks;
+	offset_t ts_pid;
+	offset_t ts_tgid;
+	offset_t ts_group_leader;
+	offset_t ts_thread_group;
+	offset_t ts_real_parent;
+	offset_t ts_mm;
 	union {
 		// corresponding to "void * stack" in task_struct,
 		// which bascially points to thread_info
-		uint32_t ts_stack;
-		uint32_t ts_thread_info;
+		offset_t ts_stack;
+		offset_t ts_thread_info;
 	};
-	uint32_t ts_real_cred;
-	uint32_t ts_cred;
-	uint32_t cred_uid;
-	uint32_t cred_gid;
-	uint32_t cred_euid;
-	uint32_t cred_egid;
-	uint32_t mm_pgd;
-	uint32_t mm_arg_start;
-	uint32_t mm_start_brk;
-	uint32_t mm_brk;
-	uint32_t mm_start_stack;
-	uint32_t ts_comm;
-	uint32_t vma_vm_start;
-	uint32_t vma_vm_end;
-	uint32_t vma_vm_next;
-	uint32_t vma_vm_file;
-	uint32_t vma_vm_flags;
-	uint32_t file_denty;
-	uint32_t dentry_d_name;
-	uint32_t dentry_d_iname;
-	uint32_t dentry_d_parent;
-	uint32_t ti_task;
+	offset_t ts_real_cred;
+	offset_t ts_cred;
+	offset_t ts_comm;
+	offset_t cred_uid;
+	offset_t cred_gid;
+	offset_t cred_euid;
+	offset_t cred_egid;
+	offset_t mm_pgd;
+	offset_t mm_arg_start;
+	offset_t mm_start_brk;
+	offset_t mm_brk;
+	offset_t mm_start_stack;
+	offset_t vma_vm_start;
+	offset_t vma_vm_end;
+	offset_t vma_vm_next;
+	offset_t vma_vm_file;
+	offset_t vma_vm_flags;
+	offset_t file_path_dentry;
+	offset_t dentry_d_name;
+	offset_t dentry_d_iname;
+	offset_t dentry_d_parent;
+	offset_t ti_task;
 } ProcInfo;
 
 typedef uint32_t gva_t;
@@ -661,6 +664,77 @@ if (pPI->ts_tgid == INVALID_OFFSET) {
 pPI->ts_tgid = pPI->ts_real_parent - 4 - offset;
 }
 return (ts + pPI->ts_real_parent - 8 - offset);
+}
+
+
+// print the procinfo struct
+void print_offset_struct(ProcInfo* pi) {
+	char* var_name = "OFFSET_PROFILE";
+	printk(KERN_INFO
+		"	%s.ts_tasks = 0x%x;\n"
+		"	%s.ts_pid = 0x%x;\n"
+		"	%s.ts_tgid = 0x%x;\n"
+		"	%s.ts_group_leader = 0x%x;\n"
+		"	%s.ts_thread_group = 0x%x;\n"
+		"	%s.ts_real_parent = 0x%x;\n"
+		"	%s.ts_mm = 0x%x;\n"
+		"	%s.ts_stack = 0x%x;\n"
+		"	%s.ts_thread_info = 0x%x;\n"
+		"	%s.ts_real_cred = 0x%x;\n"
+		"	%s.ts_cred = 0x%x;\n"
+		"	%s.ts_comm = 0x%x;\n"
+		"	%s.cred_uid = 0x%x;\n"
+		"	%s.cred_gid = 0x%x;\n"
+		"	%s.cred_euid = 0x%x;\n"
+		"	%s.cred_egid = 0x%x;\n"
+		"	%s.mm_pgd = 0x%x;\n"
+		"	%s.mm_arg_start = 0x%x;\n"
+		"	%s.mm_start_brk = 0x%x;\n"
+		"	%s.mm_brk = 0x%x;\n"
+		"	%s.mm_start_stack = 0x%x;\n"
+		"	%s.vma_vm_start = 0x%x;\n"
+		"	%s.vma_vm_end = 0x%x;\n"
+		"	%s.vma_vm_next = 0x%x;\n"
+		"	%s.vma_vm_file = 0x%x;\n"
+		"	%s.vma_vm_flags = 0x%x;\n"
+		"	%s.file_path_dentry = 0x%x;\n"
+		"	%s.dentry_d_name = 0x%x;\n"
+		"	%s.dentry_d_iname = 0x%x;\n"
+		"	%s.dentry_d_parent = 0x%x;\n"
+		"	%s.ti_task = 0x%x;\n",
+
+		var_name, pi.ts_tasks,
+		var_name, pi.ts_pid,
+		var_name, pi.ts_tgid,
+		var_name, pi.ts_group_leader,
+		var_name, pi.ts_thread_group,
+		var_name, pi.ts_real_parent,
+		var_name, pi.ts_mm,
+		var_name, pi.ts_stack,
+		var_name, pi.ts_thread_info,
+		var_name, pi.ts_real_cred,
+		var_name, pi.ts_cred,
+		var_name, pi.ts_comm,
+		var_name, pi.cred_uid,
+		var_name, pi.cred_gid,
+		var_name, pi.cred_euid,
+		var_name, pi.cred_egid,
+		var_name, pi.mm_pgd,
+		var_name, pi.mm_arg_start,
+		var_name, pi.mm_start_brk,
+		var_name, pi.mm_brk,
+		var_name, pi.mm_start_stack,
+		var_name, pi.vma_vm_start,
+		var_name, pi.vma_vm_end,
+		var_name, pi.vma_vm_next,
+		var_name, pi.vma_vm_file,
+		var_name, pi.vma_vm_flags,
+		var_name, pi.file_path_dentry,
+		var_name, pi.dentry_d_name,
+		var_name, pi.dentry_d_iname,
+		var_name, pi.dentry_d_parent,
+		var_name, pi.ti_task
+	);
 }
 
 int try_vmi(void) {
