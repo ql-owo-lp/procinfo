@@ -762,7 +762,7 @@ uint32_t i = 0;
 gva_t taskstruct = 0;
 gva_t mmstruct = 0;
 gva_t vmastruct = 0;
-gva_t threadinfo = getESP() & ~8191;
+gva_t threadinfo = getESP() & ~ (THREAD_SIZE - 1);
 
 gva_t ret = 0;
 gva_t tempTask = 0;
@@ -847,4 +847,3 @@ printk(KERN_INFO "Information module removed.\n");
 }
 
 MODULE_LICENSE("GPL");
-
