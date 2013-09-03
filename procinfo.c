@@ -81,6 +81,7 @@ typedef struct ProcInfo {
     offset_t dentry_d_name;
     offset_t dentry_d_iname;
     offset_t dentry_d_parent;
+    offset_t qstr_name;
     offset_t ti_task;
 } ProcInfo;
 
