@@ -12,6 +12,7 @@
 #include <linux/sched.h>
 #include <linux/mm.h>
 #include <linux/fs.h>
+#include <linux/path.h>
 #include <linux/dcache.h>
 #include <linux/rbtree.h>
 
@@ -672,7 +673,9 @@ void scan_offset_profile(ProcInfo* pi) {
     struct file filestruct;
     struct dentry dentrystr;
     struct cred credstruct;
+    struct path pathstruct;
     struct thread_info ti;
+    struct qstr qstrstruct;
 
     pi->ts_tasks = (int) &init_task.tasks - (int) &init_task;
     pi->ts_pid = (int) &init_task.pid - (int) &init_task;
@@ -700,10 +703,12 @@ void scan_offset_profile(ProcInfo* pi) {
     pi->vma_vm_next = (int) &vma.vm_next - (int) &vma;
     pi->vma_vm_file = (int) &vma.vm_file - (int) &vma;
     pi->vma_vm_flags = (int) &vma.vm_flags - (int) &vma;
-    pi->file_path_dentry = (int) &filestruct.f_dentry - (int) &filestruct;
+    pi->file_path = (int) &filestruct.f_path - (int) &filestruct;
+    pi->path_dentry = (int) &pathstruct.dentry - (int) &pathstruct;
     pi->dentry_d_name = (int) &dentrystr.d_name - (int) &dentrystr;
     pi->dentry_d_iname = (int) &dentrystr.d_iname - (int) &dentrystr;
     pi->dentry_d_parent = (int) &dentrystr.d_parent - (int) &dentrystr;
+    pi->qstr_name = (int) &qstrstruct.name - (int) &qstrstruct;
     pi->ti_task = (int) &ti.task - (int) &ti;
 }
 
@@ -768,22 +773,29 @@ void print_offset_profile(ProcInfo* pi) {
            "	%s.vma_vm_end = 0x%x;\n"
            "	%s.vma_vm_next = 0x%x;\n"
            "	%s.vma_vm_file = 0x%x;\n"
-           "	%s.vma_vm_flags = 0x%x;\n"
-           "	%s.file_path_dentry = 0x%x;\n"
-           "	%s.dentry_d_name = 0x%x;\n"
-           "	%s.dentry_d_iname = 0x%x;\n"
-           "	%s.dentry_d_parent = 0x%x;\n"
-           "	%s.ti_task = 0x%x;\n",
-
+           "	%s.vma_vm_flags = 0x%x;\n",
            var_name, pi->vma_vm_start,
            var_name, pi->vma_vm_end,
            var_name, pi->vma_vm_next,
            var_name, pi->vma_vm_file,
-           var_name, pi->vma_vm_flags,
-           var_name, pi->file_path_dentry,
+           var_name, pi->vma_vm_flags
+           );
+           
+    printk(KERN_INFO
+           "	%s.file_path = 0x%x;\n"
+           "	%s.path_dentry = 0x%x;\n"
+           "	%s.dentry_d_name = 0x%x;\n"
+           "	%s.dentry_d_iname = 0x%x;\n"
+           "	%s.dentry_d_parent = 0x%x;\n"
+           "	%s.qstr_name = 0x%x;\n"
+           "	%s.ti_task = 0x%x;\n",
+
+           var_name, pi->file_path,
+           var_name, pi->path_dentry,
            var_name, pi->dentry_d_name,
            var_name, pi->dentry_d_iname,
            var_name, pi->dentry_d_parent,
+           var_name, pi->qstr_name,
            var_name, pi->ti_task
           );
 }
