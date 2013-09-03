@@ -69,6 +69,7 @@ typedef struct ProcInfo {
     offset_t mm_start_brk;
     offset_t mm_brk;
     offset_t mm_start_stack;
+    offset_t mm_mmap;
     offset_t vma_vm_start;
     offset_t vma_vm_end;
     offset_t vma_vm_next;
@@ -690,8 +691,9 @@ void scan_offset_profile(ProcInfo* pi) {
     pi->mm_pgd = (int) &init_task.mm->pgd - (int) init_task.mm;
     pi->mm_arg_start = (int) &init_task.mm->arg_start - (int) init_task.mm;
     pi->mm_start_brk = (int) &init_task.mm->start_brk - (int) init_task.mm;
-//pi->mm_brk = (int)&init_task.mm->brk - (int)init_task.mm;
+    pi->mm_brk = (int)&init_task.mm->brk - (int)init_task.mm;
     pi->mm_start_stack = (int) &init_task.mm->start_stack - (int) init_task.mm;
+    pi->mm_mmap = (int) &init_task.mm->mmap - (int) init_task.mm;
     pi->vma_vm_start = (int) &vma.vm_start - (int) &vma;
     pi->vma_vm_end = (int) &vma.vm_end - (int) &vma;
     pi->vma_vm_next = (int) &vma.vm_next - (int) &vma;
@@ -750,12 +752,14 @@ void print_offset_profile(ProcInfo* pi) {
            "	%s.mm_arg_start = 0x%x;\n"
            "	%s.mm_start_brk = 0x%x;\n"
            "	%s.mm_brk = 0x%x;\n"
-           "	%s.mm_start_stack = 0x%x;\n",
+           "	%s.mm_start_stack = 0x%x;\n"
+           "	%s.mm_mmap = 0x%x;\n",
            var_name, pi->mm_pgd,
            var_name, pi->mm_arg_start,
            var_name, pi->mm_start_brk,
            var_name, pi->mm_brk,
-           var_name, pi->mm_start_stack
+           var_name, pi->mm_start_stack,
+           var_name, pi->mm_mmap
           );
 
     printk(KERN_INFO
