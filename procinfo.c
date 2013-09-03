@@ -75,7 +75,8 @@ typedef struct ProcInfo {
     offset_t vma_vm_next;
     offset_t vma_vm_file;
     offset_t vma_vm_flags;
-    offset_t file_path_dentry;
+    offset_t file_path;
+    offset_t path_dentry;
     offset_t dentry_d_name;
     offset_t dentry_d_iname;
     offset_t dentry_d_parent;
