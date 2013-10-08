@@ -319,8 +319,18 @@ gva_t findMMStructFromTaskStruct(gva_t ts, ProcInfo* pPI, int bDoubleCheck)
     {
       if (findPGDFromMMStruct(temp, pPI, bDoubleCheck) != INV_ADDR)
       {
-        pPI->ts_mm = i;
-        return (temp);
+			  // ATTENTION!! One interesting thing here is, when the system just starts, highly likely
+		  	// we will grab the active_mm instead of mm, as the mm is null for kernel thread
+  			if (pPI->ts_mm == INV_OFFSET) {
+  				// do a test, if this is mm, then active_mm should be equal to mm
+  				if (get_target_ulong_at(env, ts + i + sizeof(target_ulong)) == mm)
+  					pPI->ts_mm = i;
+  				else if (last_mm == 0)	// current mm may be active_mm
+  					pPI->ts_mm = i - sizeof(target_ulong);
+  				else
+  					break;	// something is wrong
+  			}
+  			return (mm);
       }  
     } 
   }
@@ -1359,7 +1369,7 @@ int populate_kernel_offsets(ProcInfo* pPI)
     printk(KERN_INFO "Comm offset is = %"T_FMT"d, %s \n", pPI->ts_comm, (char*)(taskstruct + pPI->ts_comm));
   }
 
-#ifdef NGROUPS_SMALL
+#if 0
   findCredFromTaskStruct(taskstruct, pPI);
   printk(KERN_INFO "real_cred = %"T_FMT"d, cred = %"T_FMT"d \n", pPI->ts_real_cred, pPI->ts_cred);
 #endif
@@ -1371,7 +1381,7 @@ int populate_kernel_offsets(ProcInfo* pPI)
   findThreadGroupFromTaskStruct(pPI->init_task_addr, pPI);
   printk(KERN_INFO "Thread_group offset is %"T_FMT"d\n", pPI->ts_thread_group);
 
-#ifdef NGROUPS_SMALL
+#if 0
   realcred = get_target_ulong_at(taskstruct + pPI->ts_real_cred);
   populate_cred_struct_offsets(realcred, pPI);
 #endif
@@ -1514,21 +1524,24 @@ int init_module(void)
       (long)&init_task.real_parent - (long)&init_task,
       (long)&init_task.mm - (long)&init_task,
       { (long)&init_task.stack - (long)&init_task },
-#ifdef NGROUPS_SMALL
+#if 0
       (long)&init_task.real_cred - (long)&init_task,
       (long)&init_task.cred - (long)&init_task,
 #else
-      -1,
-      -1,
+      0xffffffff,
+      0xffffffff,
 #endif
       (long)&init_task.comm - (long)&init_task,
-#ifdef NGROUPS_SMALL
+#if 0
       (long)&credstruct.uid - (long)&credstruct,
       (long)&credstruct.gid - (long)&credstruct,
       (long)&credstruct.euid - (long)&credstruct,
       (long)&credstruct.egid - (long)&credstruct,
 #else
-      -1, -1, -1, -1,
+      0xffffffff,
+      0xffffffff,
+      0xffffffff,
+      0xffffffff,
 #endif
 
 /** Be very careful here since init_task.mm is actually NULL 
