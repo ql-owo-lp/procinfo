@@ -8,6 +8,7 @@
 #include <linux/fs.h>
 #include <linux/dcache.h>
 
+#define linux_2_6_28
 
 //here is a simple definition for us to reuse the same code for a kernel module
 #ifdef __i386__
@@ -258,7 +259,7 @@ gva_t findTaskStructFromThreadInfo(gva_t threadinfo, ProcInfo* pPI, int bDoubleC
           }
           else
           {
-            printk(KERN_INFO "TASK STRUCT @ [0x%"T_FMT"x] FOUND @ offset %"T_FMT"d\n", candidate, j);
+            printk(KERN_INFO "TASK STRUCT @ [0x%"T_FMT"x] FOUND @ offset 0x%"T_FMT"x\n", candidate, j);
             bFound = 1;
           }
         }
@@ -323,14 +324,15 @@ gva_t findMMStructFromTaskStruct(gva_t ts, ProcInfo* pPI, int bDoubleCheck)
 		  	// we will grab the active_mm instead of mm, as the mm is null for kernel thread
   			if (pPI->ts_mm == INV_OFFSET) {
   				// do a test, if this is mm, then active_mm should be equal to mm
-  				if (get_target_ulong_at(env, ts + i + sizeof(target_ulong)) == mm)
+  				//if (get_target_ulong_at(env, ts + i + sizeof(target_ulong)) == mm)
   					pPI->ts_mm = i;
-  				else if (last_mm == 0)	// current mm may be active_mm
-  					pPI->ts_mm = i - sizeof(target_ulong);
-  				else
-  					break;	// something is wrong
+  				//else if (last_mm == 0)	// current mm may be active_mm
+  				//	pPI->ts_mm = i - sizeof(target_ulong);
+  				//else
+  				//	break;	// something is wrong
   			}
-  			return (mm);
+  			//return (mm);
+			return i;
       }  
     } 
   }
@@ -430,7 +432,7 @@ gva_t findTaskStructListFromTaskStruct(gva_t ts, ProcInfo* pPI, int bDoubleCheck
     //if its a list head - then we can be sure that this should work
     if (isListHead(temp))
     {
-      printk(KERN_INFO "[i = %"T_FMT"d] %d, %d, %d, --- \n", i, isListHead(temp)
+      printk(KERN_INFO "[i = 0x%"T_FMT"x] %d, %d, %d, --- \n", i, isListHead(temp)
          , isListHead(temp + SIZEOF_LIST_HEAD + sizeof(target_ulong))
          , isListHead(temp + SIZEOF_LIST_HEAD + SIZEOF_LIST_HEAD + sizeof(target_ulong))
          );
@@ -683,7 +685,7 @@ gva_t findThreadGroupFromTaskStruct(gva_t ts, ProcInfo* pPI)
   for ( ; i < MAX_TASK_STRUCT_SEARCH_SIZE; i+=sizeof(target_ulong))
   {
     /*
-    printk(KERN_INFO "%d === %"T_FMT"x, %"T_FMT"x, %"T_FMT"x, %"T_FMT"x, %"T_FMT"x, %d,%d,%d,%d,%d\n", i, get_target_ulong_at(ts + i),
+    printk(KERN_INFO "%d === 0x%"T_FMT"x, 0x%"T_FMT"x, 0x%"T_FMT"x, 0x%"T_FMT"x, 0x%"T_FMT"x, %d,%d,%d,%d,%d\n", i, get_target_ulong_at(ts + i),
        get_target_ulong_at(ts + i + sizeof(target_ulong)),
        get_target_ulong_at(ts+i+sizeof(target_ulong)+sizeof(target_ulong)),
        get_target_ulong_at(ts+i+(sizeof(target_ulong)*3)),
@@ -1271,7 +1273,7 @@ int populate_dentry_struct_offsets(gva_t dentry, ProcInfo* pPI)
      t1 = get_target_ulong_at(dentry+i);
      t2 = get_target_ulong_at(dentry+i+sizeof(target_ulong));
      t3 = get_target_ulong_at(dentry+i+(sizeof(target_ulong)*3));
-printk("%d [%"T_FMT"x, %"T_FMT"x, %"T_FMT"x\n", i, t1, t2, t3);
+printk("%d [0x%"T_FMT"x, 0x%"T_FMT"x, 0x%"T_FMT"x\n", i, t1, t2, t3);
     if (
          isKernelAddress(get_target_ulong_at(dentry+i))
          && isKernelAddress(get_target_ulong_at(dentry+i+sizeof(target_ulong)))
@@ -1340,17 +1342,18 @@ int populate_kernel_offsets(ProcInfo* pPI)
 
   printk(KERN_INFO "ThreadInfo @ [0x%"T_FMT"x]\n", threadinfo);
   taskstruct = findTaskStructFromThreadInfo(threadinfo, pPI, 0); 
-  printk(KERN_INFO "task_struct @ [0x%"T_FMT"x] TSOFFSET = %"T_FMT"d, TIOFFSET = %"T_FMT"d\n", taskstruct, pPI->ti_task, pPI->ts_stack);
+  printk(KERN_INFO "task_struct @ [0x%"T_FMT"x] TSOFFSET = 0x%"T_FMT"x, TIOFFSET = 0x%"T_FMT"x\n", taskstruct, pPI->ti_task, pPI->ts_stack);
 
   mmstruct = findMMStructFromTaskStruct(taskstruct, pPI, 0);
-  printk(KERN_INFO "mm_struct @ [0x%"T_FMT"x] mmOFFSET = %"T_FMT"d, pgdOFFSET = %"T_FMT"d\n", mmstruct, pPI->ts_mm, pPI->mm_pgd);
+  printk(KERN_INFO "mm_struct @ [0x%"T_FMT"x] mmOFFSET = 0x%"T_FMT"x, pgdOFFSET = 0x%"T_FMT"x\n", mmstruct, pPI->ts_mm, pPI->mm_pgd);
 
   findTaskStructListFromTaskStruct(taskstruct, pPI, 0);
-  printk(KERN_INFO "task_struct offset = %"T_FMT"d\n", pPI->ts_tasks);
+  printk(KERN_INFO "task_struct offset = 0x%"T_FMT"x\n", pPI->ts_tasks);
 
   findRealParentGroupLeaderFromTaskStruct(taskstruct, pPI);
-  printk(KERN_INFO "real_parent = %"T_FMT"d, group_leader = %"T_FMT"d\n", pPI->ts_real_parent, pPI->ts_group_leader);
+  printk(KERN_INFO "real_parent = 0x%"T_FMT"x, group_leader = 0x%"T_FMT"x\n", pPI->ts_real_parent, pPI->ts_group_leader);
 
+return 0;
   //we need the group leader - since current might just be a thread - we need a real task
   gl = get_target_ulong_at(taskstruct + pPI->ts_group_leader); 
   ret = findCommFromTaskStruct(gl, pPI);
@@ -1366,22 +1369,22 @@ int populate_kernel_offsets(ProcInfo* pPI)
 
   if (ret != INV_ADDR)
   {
-    printk(KERN_INFO "Comm offset is = %"T_FMT"d, %s \n", pPI->ts_comm, (char*)(taskstruct + pPI->ts_comm));
+    printk(KERN_INFO "Comm offset is = 0x%"T_FMT"x, %s \n", pPI->ts_comm, (char*)(taskstruct + pPI->ts_comm));
   }
 
-#if 0
+#ifndef linux_2_6_28
   findCredFromTaskStruct(taskstruct, pPI);
-  printk(KERN_INFO "real_cred = %"T_FMT"d, cred = %"T_FMT"d \n", pPI->ts_real_cred, pPI->ts_cred);
+  printk(KERN_INFO "real_cred = 0x%"T_FMT"x, cred = 0x%"T_FMT"x \n", pPI->ts_real_cred, pPI->ts_cred);
 #endif
 
   findPIDFromTaskStruct(taskstruct, pPI);
-  printk(KERN_INFO "pid = %"T_FMT"d, tgid = %"T_FMT"d \n", pPI->ts_pid, pPI->ts_tgid);
+  printk(KERN_INFO "pid = 0x%"T_FMT"x, tgid = 0x%"T_FMT"x \n", pPI->ts_pid, pPI->ts_tgid);
 
   //For this next test, I am just going to use the task struct lists
   findThreadGroupFromTaskStruct(pPI->init_task_addr, pPI);
-  printk(KERN_INFO "Thread_group offset is %"T_FMT"d\n", pPI->ts_thread_group);
+  printk(KERN_INFO "Thread_group offset is 0x%"T_FMT"x\n", pPI->ts_thread_group);
 
-#if 0
+#ifndef linux_2_6_28
   realcred = get_target_ulong_at(taskstruct + pPI->ts_real_cred);
   populate_cred_struct_offsets(realcred, pPI);
 #endif
@@ -1415,19 +1418,19 @@ int printProcInfo(ProcInfo* pPI)
   printk(KERN_INFO
       "    {  \"%s\", /* entry name */\n"
       "       0x%08"T_FMT"X, /* init_task address */\n"
-      "       %"T_FMT"d, /* size of task_struct */\n"
-      "       %"T_FMT"d, /* offset of task_struct list */\n"
-      "       %"T_FMT"d, /* offset of pid */\n"
-      "       %"T_FMT"d, /* offset of tgid */\n"
-      "       %"T_FMT"d, /* offset of group_leader */\n"
-      "       %"T_FMT"d, /* offset of thread_group */\n"
-      "       %"T_FMT"d, /* offset of real_parent */\n"
-      "       %"T_FMT"d, /* offset of mm */\n"
-      "       %"T_FMT"d, /* offset of stack */\n"
-      "       %"T_FMT"d, /* offset of real_cred */\n"
-      "       %"T_FMT"d, /* offset of cred */\n"
-      "       %"T_FMT"d, /* offset of comm */\n"
-      "       %"T_FMT"d, /* size of comm */\n",
+      "       0x%"T_FMT"x, /* size of task_struct */\n"
+      "       0x%"T_FMT"x, /* offset of task_struct list */\n"
+      "       0x%"T_FMT"x, /* offset of pid */\n"
+      "       0x%"T_FMT"x, /* offset of tgid */\n"
+      "       0x%"T_FMT"x, /* offset of group_leader */\n"
+      "       0x%"T_FMT"x, /* offset of thread_group */\n"
+      "       0x%"T_FMT"x, /* offset of real_parent */\n"
+      "       0x%"T_FMT"x, /* offset of mm */\n"
+      "       0x%"T_FMT"x, /* offset of stack */\n"
+      "       0x%"T_FMT"x, /* offset of real_cred */\n"
+      "       0x%"T_FMT"x, /* offset of cred */\n"
+      "       0x%"T_FMT"x, /* offset of comm */\n"
+      "       0x%"T_FMT"x, /* size of comm */\n",
 
       pPI->strName,
       pPI->init_task_addr,
@@ -1447,10 +1450,10 @@ int printProcInfo(ProcInfo* pPI)
   );
   
   printk(KERN_INFO
-      "       %"T_FMT"d, /* offset of uid cred */\n"
-      "       %"T_FMT"d, /* offset of gid cred */\n"
-      "       %"T_FMT"d, /* offset of euid cred */\n"
-      "       %"T_FMT"d, /* offset of egid cred */\n",
+      "       0x%"T_FMT"x, /* offset of uid cred */\n"
+      "       0x%"T_FMT"x, /* offset of gid cred */\n"
+      "       0x%"T_FMT"x, /* offset of euid cred */\n"
+      "       0x%"T_FMT"x, /* offset of egid cred */\n",
       pPI->cred_uid,
       pPI->cred_gid,
       pPI->cred_euid,
@@ -1458,12 +1461,12 @@ int printProcInfo(ProcInfo* pPI)
   );
 
   printk(KERN_INFO
-      "       %"T_FMT"d, /* offset of mmap in mm */\n"
-      "       %"T_FMT"d, /* offset of pgd in mm */\n"
-      "       %"T_FMT"d, /* offset of arg_start in mm */\n"
-      "       %"T_FMT"d, /* offset of start_brk in mm */\n"
-      "       %"T_FMT"d, /* offset of brk in mm */\n"
-      "       %"T_FMT"d, /* offset of start_stack in mm */\n",
+      "       0x%"T_FMT"x, /* offset of mmap in mm */\n"
+      "       0x%"T_FMT"x, /* offset of pgd in mm */\n"
+      "       0x%"T_FMT"x, /* offset of arg_start in mm */\n"
+      "       0x%"T_FMT"x, /* offset of start_brk in mm */\n"
+      "       0x%"T_FMT"x, /* offset of brk in mm */\n"
+      "       0x%"T_FMT"x, /* offset of start_stack in mm */\n",
       pPI->mm_mmap,
       pPI->mm_pgd,
       pPI->mm_arg_start,
@@ -1473,11 +1476,11 @@ int printProcInfo(ProcInfo* pPI)
   );
 
   printk(KERN_INFO
-      "       %"T_FMT"d, /* offset of vm_start in vma */\n"
-      "       %"T_FMT"d, /* offset of vm_end in vma */\n"
-      "       %"T_FMT"d, /* offset of vm_next in vma */\n"
-      "       %"T_FMT"d, /* offset of vm_file in vma */\n"
-      "       %"T_FMT"d, /* offset of vm_flags in vma */\n",
+      "       0x%"T_FMT"x, /* offset of vm_start in vma */\n"
+      "       0x%"T_FMT"x, /* offset of vm_end in vma */\n"
+      "       0x%"T_FMT"x, /* offset of vm_next in vma */\n"
+      "       0x%"T_FMT"x, /* offset of vm_file in vma */\n"
+      "       0x%"T_FMT"x, /* offset of vm_flags in vma */\n",
       pPI->vma_vm_start,
       pPI->vma_vm_end,
       pPI->vma_vm_next,
@@ -1486,10 +1489,10 @@ int printProcInfo(ProcInfo* pPI)
   );
 
   printk(KERN_INFO
-      "       %"T_FMT"d, /* offset of dentry in file */\n"
-      "       %"T_FMT"d, /* offset of d_name in dentry */\n"
-      "       %"T_FMT"d, /* offset of d_iname in dentry */\n"
-      "       %"T_FMT"d, /* offset of d_parent in dentry */\n",
+      "       0x%"T_FMT"x, /* offset of dentry in file */\n"
+      "       0x%"T_FMT"x, /* offset of d_name in dentry */\n"
+      "       0x%"T_FMT"x, /* offset of d_iname in dentry */\n"
+      "       0x%"T_FMT"x, /* offset of d_parent in dentry */\n",
       pPI->file_dentry,
       pPI->dentry_d_name,
       pPI->dentry_d_iname,
@@ -1497,11 +1500,107 @@ int printProcInfo(ProcInfo* pPI)
   );
   
   printk(KERN_INFO
-      "       %"T_FMT"d, /* offset of task in thread info */\n",
+      "       0x%"T_FMT"x, /* offset of task in thread info */\n",
       pPI->ti_task
   );
 
   return (0);
+}
+
+int compareProcInfo(ProcInfo* pPI1, ProcInfo* pPI2) {
+  if (pPI1 == NULL || pPI2 == NULL)
+  {
+    return (-1);
+  }
+
+  printk(KERN_INFO
+      "    {  \"%s\", /* entry name */\n"
+      "       0x%08"T_FMT"X, /* init_task address */\n"
+      "       0x%"T_FMT"x, /* size of task_struct */\n"
+      "       0x%"T_FMT"x, /* offset of task_struct list */\n"
+      "       0x%"T_FMT"x, /* offset of pid */\n"
+      "       0x%"T_FMT"x, /* offset of tgid */\n"
+      "       0x%"T_FMT"x, /* offset of group_leader */\n"
+      "       0x%"T_FMT"x, /* offset of thread_group */\n"
+      "       0x%"T_FMT"x, /* offset of real_parent */\n"
+      "       0x%"T_FMT"x, /* offset of mm */\n"
+      "       0x%"T_FMT"x, /* offset of stack */\n"
+      "       0x%"T_FMT"x, /* offset of real_cred */\n"
+      "       0x%"T_FMT"x, /* offset of cred */\n"
+      "       0x%"T_FMT"x, /* offset of comm */\n"
+      "       0x%"T_FMT"x, /* size of comm */\n",
+
+      pPI1->strName - pPI2->strName,
+      pPI1->init_task_addr - pPI2->init_task_addr,
+      pPI1->init_task_size - pPI2->init_task_size,
+      pPI1->ts_tasks - pPI2->ts_tasks,
+      pPI1->ts_pid - pPI2->ts_pid,
+      pPI1->ts_tgid - pPI2->ts_tgid,
+      pPI1->ts_group_leader - pPI2->ts_group_leader,
+      pPI1->ts_thread_group - pPI2->ts_thread_group,
+      pPI1->ts_real_parent - pPI2->ts_real_parent,
+      pPI1->ts_mm - pPI2->ts_mm,
+      pPI1->ts_stack - pPI2->ts_stack,
+      pPI1->ts_real_cred - pPI2->ts_real_cred,
+      pPI1->ts_cred - pPI2->ts_cred,
+      pPI1->ts_comm - pPI2->ts_comm,
+      SIZEOF_COMM
+  );
+  
+  printk(KERN_INFO
+      "       0x%"T_FMT"x, /* offset of uid cred */\n"
+      "       0x%"T_FMT"x, /* offset of gid cred */\n"
+      "       0x%"T_FMT"x, /* offset of euid cred */\n"
+      "       0x%"T_FMT"x, /* offset of egid cred */\n",
+      pPI1->cred_uid - pPI2->cred_uid,
+      pPI1->cred_gid - pPI2->cred_gid,
+      pPI1->cred_euid - pPI2->cred_euid,
+      pPI1->cred_egid - pPI2->cred_egid
+  );
+
+  printk(KERN_INFO
+      "       0x%"T_FMT"x, /* offset of mmap in mm */\n"
+      "       0x%"T_FMT"x, /* offset of pgd in mm */\n"
+      "       0x%"T_FMT"x, /* offset of arg_start in mm */\n"
+      "       0x%"T_FMT"x, /* offset of start_brk in mm */\n"
+      "       0x%"T_FMT"x, /* offset of brk in mm */\n"
+      "       0x%"T_FMT"x, /* offset of start_stack in mm */\n",
+      pPI1->mm_mmap - pPI2->mm_mmap,
+      pPI1->mm_pgd - pPI2->mm_pgd,
+      pPI1->mm_arg_start - pPI2->mm_arg_start,
+      pPI1->mm_start_brk - pPI2->mm_start_brk,
+      pPI1->mm_brk - pPI2->mm_brk,
+      pPI1->mm_start_stack - pPI2->mm_start_stack
+  );
+
+  printk(KERN_INFO
+      "       0x%"T_FMT"x, /* offset of vm_start in vma */\n"
+      "       0x%"T_FMT"x, /* offset of vm_end in vma */\n"
+      "       0x%"T_FMT"x, /* offset of vm_next in vma */\n"
+      "       0x%"T_FMT"x, /* offset of vm_file in vma */\n"
+      "       0x%"T_FMT"x, /* offset of vm_flags in vma */\n",
+      pPI1->vma_vm_start - pPI2->vma_vm_start,
+      pPI1->vma_vm_end - pPI2->vma_vm_end,
+      pPI1->vma_vm_next -pPI2->vma_vm_next,
+      pPI1->vma_vm_file - pPI2->vma_vm_file,
+      pPI1->vma_vm_flags - pPI2->vma_vm_flags
+  );
+
+  printk(KERN_INFO
+      "       0x%"T_FMT"x, /* offset of dentry in file */\n"
+      "       0x%"T_FMT"x, /* offset of d_name in dentry */\n"
+      "       0x%"T_FMT"x, /* offset of d_iname in dentry */\n"
+      "       0x%"T_FMT"x, /* offset of d_parent in dentry */\n",
+      pPI1->file_dentry - pPI2->file_dentry,
+      pPI1->dentry_d_name - pPI2->dentry_d_name,
+      pPI1->dentry_d_iname - pPI2->dentry_d_iname,
+      pPI1->dentry_d_parent - pPI2->dentry_d_parent
+  );
+  
+  printk(KERN_INFO
+      "       0x%"T_FMT"x, /* offset of task in thread info */\n",
+      pPI1->ti_task - pPI2->ti_task
+  );
 }
 
 int init_module(void)
@@ -1509,7 +1608,9 @@ int init_module(void)
   struct vm_area_struct vma;
   struct file filestruct;
   struct dentry dentrystr;
+#ifndef linux_2_6_28
   struct cred credstruct;
+#endif
   struct thread_info ti;
 
   ProcInfo hostPI = {
@@ -1524,7 +1625,7 @@ int init_module(void)
       (long)&init_task.real_parent - (long)&init_task,
       (long)&init_task.mm - (long)&init_task,
       { (long)&init_task.stack - (long)&init_task },
-#if 0
+#ifndef linux_2_6_28
       (long)&init_task.real_cred - (long)&init_task,
       (long)&init_task.cred - (long)&init_task,
 #else
@@ -1532,7 +1633,7 @@ int init_module(void)
       0xffffffff,
 #endif
       (long)&init_task.comm - (long)&init_task,
-#if 0
+#ifndef linux_2_6_28
       (long)&credstruct.uid - (long)&credstruct,
       (long)&credstruct.gid - (long)&credstruct,
       (long)&credstruct.euid - (long)&credstruct,
@@ -1575,6 +1676,8 @@ int init_module(void)
   printProcInfo(&vmi);
 
   printProcInfo(&hostPI);
+  //compareProcInfo(&vmi, &hostPI);
+
   printk(KERN_INFO "Information module registered.\n");
   return -1;
 }
